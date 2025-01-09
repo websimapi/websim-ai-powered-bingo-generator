@@ -1,0 +1,211 @@
+<html><head><base href="." /><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" /></head><body>
+<meta charset="UTF-8">
+<style>
+.bingo-board {
+    max-width: 800px;
+    margin: 20px auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.1);
+}
+
+.cell {
+    aspect-ratio: 1;
+    border: 2px solid #ddd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 10px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+.cell.selected {
+    background: #198754;
+    color: white;
+}
+
+.theme-selector {
+    max-width: 800px;
+    margin: 20px auto;
+}
+
+@keyframes celebrate {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+.win-animation {
+    animation: celebrate 0.5s ease-in-out;
+}
+</style>
+
+<div class="container mt-4">
+    <div class="theme-selector">
+        <h2 class="text-center mb-4">AI Powered Bingo Generator</h2>
+        <div class="mb-3">
+            <label class="form-label">Select Game Theme:</label>
+            <select class="form-select" id="gameTheme">
+                <option value="zelda">The Legend of Zelda: Breath of the Wild</option>
+                <option value="darksouls">Dark Souls</option>
+                <option value="mario">Super Mario</option>
+                <option value="minecraft">Minecraft</option>
+            </select>
+        </div>
+        <button class="btn btn-primary w-100" id="generateBoard">Generate New Board</button>
+    </div>
+    
+    <div class="bingo-board">
+        <div class="row g-2" id="bingoGrid">
+            <!-- Grid will be populated by JavaScript -->
+        </div>
+    </div>
+</div>
+
+<script>
+const BOARD_SIZE = 5;
+
+async function getBingoChallenges(theme) {
+    try {
+        const response = await fetch('/api/ai_completion', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                prompt: `Generate ${BOARD_SIZE * BOARD_SIZE} unique bingo card challenges for ${theme}. 
+                Make them interesting and varied in difficulty.
+                
+                <typescript-interface>
+                interface Response {
+                    challenges: string[];
+                }
+                </typescript-interface>
+                
+                <example>
+                {
+                    "challenges": [
+                        "Defeat a Lynel without taking damage",
+                        "Collect 5 different shields",
+                        "Cook a meal with mighty bananas"
+                    ]
+                }
+                </example>`,
+                data: theme
+            })
+        });
+        
+        const data = await response.json();
+        return data.challenges;
+    } catch (error) {
+        console.error('Error fetching challenges:', error);
+        return getDefaultChallenges(theme);
+    }
+}
+
+function getDefaultChallenges(theme) {
+    // Fallback challenges if API call fails
+    return Array(BOARD_SIZE * BOARD_SIZE).fill().map((_, i) => 
+        `${theme} Challenge #${i + 1}`
+    );
+}
+
+function checkWinCondition() {
+    // Check rows
+    for (let i = 0; i < BOARD_SIZE; i++) {
+        let rowWin = true;
+        for (let j = 0; j < BOARD_SIZE; j++) {
+            const cell = document.querySelector(`[data-row="${i}"][data-col="${j}"]`);
+            if (!cell.classList.contains('selected')) {
+                rowWin = false;
+                break;
+            }
+        }
+        if (rowWin) return true;
+    }
+
+    // Check columns
+    for (let j = 0; j < BOARD_SIZE; j++) {
+        let colWin = true;
+        for (let i = 0; i < BOARD_SIZE; i++) {
+            const cell = document.querySelector(`[data-row="${i}"][data-col="${j}"]`);
+            if (!cell.classList.contains('selected')) {
+                colWin = false;
+                break;
+            }
+        }
+        if (colWin) return true;
+    }
+
+    // Check diagonals
+    let diag1Win = true;
+    let diag2Win = true;
+    for (let i = 0; i < BOARD_SIZE; i++) {
+        const cell1 = document.querySelector(`[data-row="${i}"][data-col="${i}"]`);
+        const cell2 = document.querySelector(`[data-row="${i}"][data-col="${BOARD_SIZE-1-i}"]`);
+        if (!cell1.classList.contains('selected')) diag1Win = false;
+        if (!cell2.classList.contains('selected')) diag2Win = false;
+    }
+
+    return diag1Win || diag2Win;
+}
+
+async function generateBoard() {
+    const theme = document.getElementById('gameTheme').value;
+    const challenges = await getBingoChallenges(theme);
+    const grid = document.getElementById('bingoGrid');
+    grid.innerHTML = '';
+
+    for (let i = 0; i < BOARD_SIZE; i++) {
+        const row = document.createElement('div');
+        row.className = 'row g-2';
+        
+        for (let j = 0; j < BOARD_SIZE; j++) {
+            const cell = document.createElement('div');
+            cell.className = 'col';
+            const index = i * BOARD_SIZE + j;
+            const centerCell = Math.floor(BOARD_SIZE * BOARD_SIZE / 2) === index;
+            
+            cell.innerHTML = `
+                <div class="cell${centerCell ? ' selected' : ''}" 
+                     data-row="${i}" 
+                     data-col="${j}">
+                    ${centerCell ? 'FREE SPACE' : challenges[index]}
+                </div>
+            `;
+            
+            row.appendChild(cell);
+        }
+        grid.appendChild(row);
+    }
+
+    // Add click handlers
+    document.querySelectorAll('.cell').forEach(cell => {
+        cell.addEventListener('click', function() {
+            if (this.textContent.trim() !== 'FREE SPACE') {
+                this.classList.toggle('selected');
+                
+                if (checkWinCondition()) {
+                    document.querySelector('.bingo-board').classList.add('win-animation');
+                    setTimeout(() => {
+                        alert('BINGO! You won!');
+                        document.querySelector('.bingo-board').classList.remove('win-animation');
+                    }, 500);
+                }
+            }
+        });
+    });
+}
+
+document.getElementById('generateBoard').addEventListener('click', generateBoard);
+
+// Generate initial board
+generateBoard();
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body></html>
